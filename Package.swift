@@ -9,7 +9,8 @@ let package = Package(
         .iOS(.v13), .tvOS(.v13), .macOS(.v10_15), .watchOS(.v6)
     ],
     products: [
-        .library(name: "CombineLongPolling", type: .dynamic, targets: ["CombineLongPolling"])
+        .library(name: "CombineLongPollingDynamic", type: .dynamic, targets: ["CombineLongPolling"]),
+        .library(name: "CombineLongPolling", targets: ["CombineLongPolling"])
     ],
     dependencies: [],
     targets: [
