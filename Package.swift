@@ -12,9 +12,7 @@ let package = Package(
         .library(name: "CombineLongPollingDynamic", type: .dynamic, targets: ["CombineLongPolling"]),
         .library(name: "CombineLongPolling", targets: ["CombineLongPolling"])
     ],
-    dependencies: [],
     targets: [
-        .target(name: "CombineLongPolling", dependencies: []),
-        .testTarget(name: "CombineLongPollingTests", dependencies: ["CombineLongPolling"])
+        .target(name: "CombineLongPolling", dependencies: [])
     ]
 )
