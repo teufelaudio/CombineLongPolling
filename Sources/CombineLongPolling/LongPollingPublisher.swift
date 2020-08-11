@@ -42,6 +42,7 @@ extension LongPollingPublisher {
         let dataTaskPublisher: AnyPublisher<(data: Data, response: URLResponse), URLError>
         private let lock = NSRecursiveLock()
         private var started = false
+        private var finished = false
         private var currentRequest: AnyCancellable?
         private var semaphore = DispatchSemaphore(value: 1)
 
@@ -55,7 +56,7 @@ extension LongPollingPublisher {
 
             lock.lock()
 
-            if !started && demand > .none {
+            if !started && !finished && demand > .none {
                 // There's demand, and it's the first demanded value, so we start polling
                 started = true
                 lock.unlock()
@@ -72,11 +73,13 @@ extension LongPollingPublisher {
         }
 
         public func cancel() {
+            lock.lock()
+            finished = true
+            lock.unlock()
+
             buffer?.complete(completion: .finished)
-            started = false
             currentRequest = nil
             buffer = nil
-            self.semaphore = DispatchSemaphore(value: 1)
         }
 
         private func start() {
@@ -86,7 +89,7 @@ extension LongPollingPublisher {
 
         private func startPolling() {
             DispatchQueue.global(qos: .utility).async {
-                while(self.started) {
+                while(self.started && !self.finished) {
                     self.semaphore.wait()
 
                     self.currentRequest = self.dataTaskPublisher
@@ -100,16 +103,6 @@ extension LongPollingPublisher {
                             // Any other error will kill the subscription
                             return Fail(error: error).eraseToAnyPublisher()
                         }
-                        .handleEvents(
-                            receiveCompletion: { [weak self] _ in
-                                guard let self = self else { return }
-                                self.semaphore.signal()
-                            },
-                            receiveCancel: { [weak self] in
-                                guard let self = self else { return }
-                                self.semaphore.signal()
-                            }
-                        )
                         .sink(
                             receiveCompletion: { [weak self] completion in
                                 guard let self = self else { return }
@@ -117,13 +110,16 @@ extension LongPollingPublisher {
                                 guard case let .failure(error) = completion else {
                                     // If this completes without error, we don't send completion to downstream, because the Long Polling will
                                     // restart. Only error will stop the subscription and send a kill message to downstream.
+                                    self.semaphore.signal()
                                     return
                                 }
 
-                                self.started = false
+                                self.lock.lock()
+                                self.finished = true
+                                self.lock.unlock()
+
                                 _ = self.buffer?.complete(completion: .failure(error))
                                 self.buffer = nil
-                                self.semaphore = DispatchSemaphore(value: 1)
                             },
                             receiveValue: { [weak self] result in
                                 guard let self = self else { return }
