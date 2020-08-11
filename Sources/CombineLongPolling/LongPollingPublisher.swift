@@ -9,12 +9,12 @@ import Foundation
 /// `LongPollingPublisher` will `Never` fail.
 public struct LongPollingPublisher: Publisher {
     /// The kind of values published by this publisher.
-    public typealias Output = Result<(Data, URLResponse), URLError>
+    public typealias Output = (Data, URLResponse)
 
     /// The kind of errors this publisher might publish.
-    ///
-    /// Use `Never` if this `Publisher` does not publish errors.
-    public typealias Failure = Never
+    /// This publisher will forward any `URLError` coming from upstream, except URLError.timedOut (Code -1001) which
+    /// is expected to happen on long polling and will restart the polling
+    public typealias Failure = URLError
 
     public let dataTaskPublisher: AnyPublisher<(data: Data, response: URLResponse), URLError>
 
@@ -90,9 +90,15 @@ extension LongPollingPublisher {
                     self.semaphore.wait()
 
                     self.currentRequest = self.dataTaskPublisher
-                        .map(Result<(Data, URLResponse), URLError>.success)
-                        .catch { error in
-                            Just(.failure(error))
+                        .catch { error -> AnyPublisher<(data: Data, response: URLResponse), URLError> in
+                            // Timeout errors are accepted as valid. In Long Polling terms that means that there's no output during the
+                            // time we were observing. So in that case we send an Empty publisher that completes automatically, forcing a
+                            // new long poll data task to start in the loop.
+                            if error.code == URLError.Code.timedOut {
+                                return Empty(completeImmediately: true).eraseToAnyPublisher()
+                            }
+                            // Any other error will kill the subscription
+                            return Fail(error: error).eraseToAnyPublisher()
                         }
                         .handleEvents(
                             receiveCompletion: { [weak self] _ in
@@ -104,10 +110,27 @@ extension LongPollingPublisher {
                                 self.semaphore.signal()
                             }
                         )
-                        .setFailureType(to: Never.self)
-                        .sink { result in
-                            _ = self.buffer?.buffer(value: result )
-                        }
+                        .sink(
+                            receiveCompletion: { [weak self] completion in
+                                guard let self = self else { return }
+
+                                guard case let .failure(error) = completion else {
+                                    // If this completes without error, we don't send completion to downstream, because the Long Polling will
+                                    // restart. Only error will stop the subscription and send a kill message to downstream.
+                                    return
+                                }
+
+                                self.started = false
+                                _ = self.buffer?.complete(completion: .failure(error))
+                                self.buffer = nil
+                                self.semaphore = DispatchSemaphore(value: 1)
+                            },
+                            receiveValue: { [weak self] result in
+                                guard let self = self else { return }
+
+                                _ = self.buffer?.buffer(value: result)
+                            }
+                        )
                 }
             }
         }
