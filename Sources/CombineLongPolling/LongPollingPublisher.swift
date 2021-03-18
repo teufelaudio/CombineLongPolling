@@ -89,7 +89,11 @@ extension LongPollingPublisher {
 
         private func startPolling() {
             DispatchQueue.global(qos: .utility).async {
-                while(self.started && !self.finished) {
+                while({
+                    defer { self.lock.unlock() }
+                    self.lock.lock()
+                    return self.started && !self.finished
+                }() ) {
                     self.semaphore.wait()
 
                     self.currentRequest = self.dataTaskPublisher
