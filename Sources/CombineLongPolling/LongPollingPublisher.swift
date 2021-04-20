@@ -44,7 +44,7 @@ extension LongPollingPublisher {
         private var started = false
         private var finished = false
         private var currentRequest: AnyCancellable?
-        private var semaphore = DispatchSemaphore(value: 1)
+        private var semaphore = DispatchSemaphore(value: 0)
 
         init(dataTaskPublisher: AnyPublisher<(data: Data, response: URLResponse), URLError>, subscriber: S) {
             self.dataTaskPublisher = dataTaskPublisher
