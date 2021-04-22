@@ -12,7 +12,10 @@ let package = Package(
         .library(name: "CombineLongPollingDynamic", type: .dynamic, targets: ["CombineLongPolling"]),
         .library(name: "CombineLongPolling", targets: ["CombineLongPolling"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/teufelaudio/NetworkExtensions.git", .upToNextMajor(from: "0.1.6"))
+    ],
     targets: [
-        .target(name: "CombineLongPolling", dependencies: [])
+        .target(name: "CombineLongPolling", dependencies: ["NetworkExtensions"])
     ]
 )
