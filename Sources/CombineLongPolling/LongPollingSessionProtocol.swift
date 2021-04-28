@@ -29,4 +29,7 @@ public protocol LongPollingSessionProtocol {
     /// - Returns: A publisher that wraps a long-polling data task for the provided upstream data task.
     func longPollingPublisher<P: Publisher>(for dataTaskPublisher: P) -> LongPollingPublisher
     where P.Output == (data: Data, response: URLResponse), P.Failure == URLError
+
+    var timeoutIntervalForResource: TimeInterval { get }
+    var timeoutIntervalForRequest: TimeInterval { get }
 }
