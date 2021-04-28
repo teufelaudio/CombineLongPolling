@@ -47,7 +47,10 @@ extension URLSession: LongPollingSessionProtocol {
 }
 
 #if DEBUG
-public class LongPollingSessionMock {
+public class LongPollingSessionMock: LongPollingSessionProtocol {
+    public var timeoutIntervalForResource: TimeInterval = 60
+    public var timeoutIntervalForRequest: TimeInterval = 60
+
     public init() { }
 
     public var longPollingPassthrough = PassthroughSubject<(data: Data, response: URLResponse), URLError>()
