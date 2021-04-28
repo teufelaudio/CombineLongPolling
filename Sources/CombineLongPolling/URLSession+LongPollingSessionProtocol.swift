@@ -36,6 +36,14 @@ extension URLSession: LongPollingSessionProtocol {
     where P.Output == (data: Data, response: URLResponse), P.Failure == URLError {
         LongPollingPublisher(dataTaskPublisher: dataTaskPublisher)
     }
+
+    public var timeoutIntervalForRequest: TimeInterval {
+        configuration.timeoutIntervalForRequest
+    }
+
+    public var timeoutIntervalForResource: TimeInterval {
+        configuration.timeoutIntervalForResource
+    }
 }
 
 #if DEBUG
