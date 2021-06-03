@@ -92,7 +92,8 @@ extension LongPollingPublisher {
         }
 
         private func startPolling() {
-            DispatchQueue.global(qos: .utility).async {
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                guard let self = self else { return }
                 while({
                     defer { self.lock.unlock() }
                     self.lock.lock()
