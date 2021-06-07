@@ -88,56 +88,55 @@ extension LongPollingPublisher {
             // Seal of approvoal: "Greg Parker stated that it’s a feature, not a bug" 🦭
             self.semaphore = DispatchSemaphore(value: 0)
             self.semaphore.signal()
-            startPolling()
+            DispatchQueue.global(qos: .utility).async {
+                self.startPolling()
+            }
         }
 
         private func startPolling() {
-            DispatchQueue.global(qos: .utility).async { [weak self] in
-                guard let self = self else { return }
-                while({
-                    defer { self.lock.unlock() }
-                    self.lock.lock()
-                    return self.started && !self.finished
-                }() ) {
-                    // on the first run, the semaphore is 1, so we are not blocked here and fetch the data immediately.
-                    self.semaphore.wait()
+            while({
+                defer { lock.unlock() }
+                lock.lock()
+                return started && !finished
+            }() ) {
+                // on the first run, the semaphore is 1, so we are not blocked here and fetch the data immediately.
+                semaphore.wait()
 
-                    self.currentRequest = self.dataTaskPublisher
-                        .catch { error -> AnyPublisher<(data: Data, response: URLResponse), URLError> in
-                            // Timeout errors are accepted as valid. In Long Polling terms that means that there's no output during the
-                            // time we were observing. So in that case we send an Empty publisher that completes automatically, forcing a
-                            // new long poll data task to start in the loop.
-                            if error.code == URLError.Code.timedOut {
-                                return Empty(completeImmediately: true).eraseToAnyPublisher()
-                            }
-                            // Any other error will kill the subscription
-                            return Fail(error: error).eraseToAnyPublisher()
+                currentRequest = dataTaskPublisher
+                    .catch { error -> AnyPublisher<(data: Data, response: URLResponse), URLError> in
+                        // Timeout errors are accepted as valid. In Long Polling terms that means that there's no output during the
+                        // time we were observing. So in that case we send an Empty publisher that completes automatically, forcing a
+                        // new long poll data task to start in the loop.
+                        if error.code == URLError.Code.timedOut {
+                            return Empty(completeImmediately: true).eraseToAnyPublisher()
                         }
-                        .sink(
-                            receiveCompletion: { [weak self] completion in
-                                guard let self = self else { return }
+                        // Any other error will kill the subscription
+                        return Fail(error: error).eraseToAnyPublisher()
+                    }
+                    .sink(
+                        receiveCompletion: { [weak self] completion in
+                            guard let self = self else { return }
 
-                                guard case let .failure(error) = completion else {
-                                    // If this completes without error, we don't send completion to downstream, because the Long Polling will
-                                    // restart. Only error will stop the subscription and send a kill message to downstream.
-                                    self.semaphore.signal()
-                                    return
-                                }
-
-                                self.lock.lock()
-                                self.finished = true
-                                self.lock.unlock()
-
-                                _ = self.buffer?.complete(completion: .failure(error))
-                                self.buffer = nil
-                            },
-                            receiveValue: { [weak self] result in
-                                guard let self = self else { return }
-
-                                _ = self.buffer?.buffer(value: result)
+                            guard case let .failure(error) = completion else {
+                                // If this completes without error, we don't send completion to downstream, because the Long Polling will
+                                // restart. Only error will stop the subscription and send a kill message to downstream.
+                                self.semaphore.signal()
+                                return
                             }
-                        )
-                }
+
+                            self.lock.lock()
+                            self.finished = true
+                            self.lock.unlock()
+
+                            _ = self.buffer?.complete(completion: .failure(error))
+                            self.buffer = nil
+                        },
+                        receiveValue: { [weak self] result in
+                            guard let self = self else { return }
+
+                            _ = self.buffer?.buffer(value: result)
+                        }
+                    )
             }
         }
     }
