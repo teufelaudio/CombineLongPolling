@@ -102,6 +102,13 @@ extension LongPollingPublisher {
                 // on the first run, the semaphore is 1, so we are not blocked here and fetch the data immediately.
                 semaphore.wait()
 
+                lock.lock()
+                guard started && !finished else {
+                    lock.unlock()
+                    return
+                }
+                lock.unlock()
+
                 currentRequest = dataTaskPublisher
                     .catch { error -> AnyPublisher<(data: Data, response: URLResponse), URLError> in
                         // Timeout errors are accepted as valid. In Long Polling terms that means that there's no output during the
