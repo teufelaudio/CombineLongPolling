@@ -76,8 +76,6 @@ extension LongPollingPublisher {
             lock.lock()
             finished = true
             lock.unlock()
-            // Make sure to not wait for the semaphore, otherwise the object won't get allocated
-            semaphore.signal()
 
             buffer?.complete(completion: .finished)
             currentRequest = nil
