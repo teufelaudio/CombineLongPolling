@@ -40,14 +40,18 @@ class DemandBuffer<S: Subscriber> {
     ///
     /// - returns: The demand fulfilled by the bufferr
     func buffer(value: S.Input) -> Subscribers.Demand {
+        lock.lock()
+
         precondition(self.completion == nil,
                      "How could a completed publisher sent values?! Beats me 🤷‍♂️")
 
         switch demandState.requested {
         case .unlimited:
+            lock.unlock()
             return subscriber.receive(value)
         default:
             buffer.append(value)
+            lock.unlock()
             return flush()
         }
     }
@@ -60,10 +64,13 @@ class DemandBuffer<S: Subscriber> {
     ///
     /// - parameter completion: Completion event
     func complete(completion: Subscribers.Completion<S.Failure>) {
+        lock.lock()
+
         precondition(self.completion == nil,
                      "Completion have already occured, which is quite awkward 🥺")
 
         self.completion = completion
+        lock.unlock()
         _ = flush()
     }
 

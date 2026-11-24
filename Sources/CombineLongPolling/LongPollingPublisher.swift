@@ -44,7 +44,7 @@ extension LongPollingPublisher {
         private var started = false
         private var finished = false
         private var currentRequest: AnyCancellable?
-        private var semaphore = DispatchSemaphore(value: 0)
+        private let semaphore = DispatchSemaphore(value: 0)
 
         init(dataTaskPublisher: AnyPublisher<(data: Data, response: URLResponse), URLError>, subscriber: S) {
             self.dataTaskPublisher = dataTaskPublisher
@@ -52,9 +52,12 @@ extension LongPollingPublisher {
         }
 
         func request(_ demand: Subscribers.Demand) {
-            guard let buffer = self.buffer else { return }
-
             lock.lock()
+
+            guard let buffer = self.buffer else {
+                lock.unlock()
+                return
+            }
 
             if !started && !finished && demand > .none {
                 // There's demand, and it's the first demanded value, so we start polling
@@ -75,20 +78,20 @@ extension LongPollingPublisher {
         public func cancel() {
             lock.lock()
             finished = true
+            let currentRequest = self.currentRequest
+            self.buffer = nil
+            self.currentRequest = nil
             lock.unlock()
             // Make sure to not wait for the semaphore, otherwise the object won't get allocated
             semaphore.signal()
 
-            buffer?.complete(completion: .finished)
-            currentRequest = nil
-            buffer = nil
+            currentRequest?.cancel()
         }
 
         private func start() {
             // Instead of creating the semaphore with value 1, we signal() immediately to increase the value to 1. This workaround fixes the
             // "Semaphore object deallocated while in use"-crash. See https://lists.apple.com/archives/cocoa-dev/2014/Apr/msg00485.html
             // Seal of approvoal: "Greg Parker stated that it’s a feature, not a bug" 🦭
-            self.semaphore = DispatchSemaphore(value: 0)
             self.semaphore.signal()
             DispatchQueue.global(qos: .utility).async {
                 self.startPolling()
@@ -111,7 +114,7 @@ extension LongPollingPublisher {
                 }
                 lock.unlock()
 
-                currentRequest = dataTaskPublisher
+                let newRequest = dataTaskPublisher
                     .catch { error -> AnyPublisher<(data: Data, response: URLResponse), URLError> in
                         // Timeout errors are accepted as valid. In Long Polling terms that means that there's no output during the
                         // time we were observing. So in that case we send an Empty publisher that completes automatically, forcing a
@@ -135,17 +138,32 @@ extension LongPollingPublisher {
 
                             self.lock.lock()
                             self.finished = true
-                            self.lock.unlock()
-
-                            _ = self.buffer?.complete(completion: .failure(error))
+                            let buffer = self.buffer
                             self.buffer = nil
+                            self.lock.unlock()
+                            self.semaphore.signal()
+
+                            _ = buffer?.complete(completion: .failure(error))
                         },
                         receiveValue: { [weak self] result in
                             guard let self = self else { return }
 
-                            _ = self.buffer?.buffer(value: result)
+                            self.lock.lock()
+                            let buffer = self.buffer
+                            self.lock.unlock()
+
+                            _ = buffer?.buffer(value: result)
                         }
                     )
+
+                lock.lock()
+                guard !finished else {
+                    lock.unlock()
+                    newRequest.cancel()
+                    return
+                }
+                currentRequest = newRequest
+                lock.unlock()
             }
         }
     }
