@@ -143,6 +143,7 @@ extension LongPollingPublisher {
                             let buffer = self.buffer
                             self.buffer = nil
                             self.lock.unlock()
+                            self.semaphore.signal()
 
                             _ = buffer?.complete(completion: .failure(error))
                         },
