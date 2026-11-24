@@ -78,7 +78,6 @@ extension LongPollingPublisher {
         public func cancel() {
             lock.lock()
             finished = true
-            let buffer = self.buffer
             let currentRequest = self.currentRequest
             self.buffer = nil
             self.currentRequest = nil
@@ -86,7 +85,6 @@ extension LongPollingPublisher {
             // Make sure to not wait for the semaphore, otherwise the object won't get allocated
             semaphore.signal()
 
-            buffer?.complete(completion: .finished)
             currentRequest?.cancel()
         }
 
@@ -159,6 +157,11 @@ extension LongPollingPublisher {
                     )
 
                 lock.lock()
+                guard !finished else {
+                    lock.unlock()
+                    newRequest.cancel()
+                    return
+                }
                 currentRequest = newRequest
                 lock.unlock()
             }
